@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="panel">
+  <h2>Recruit Wallet Card</h2>
+  <p>Card ID: <code>{{ card_id }}</code></p>
+  <p><a href="{{ wallet_link }}" target="_blank">Open card link</a></p>
+  <p><a href="{{ apple_wallet_link }}" target="_blank">Add to Apple Wallet</a></p>
+  <p class="muted">
+    In production, this URL should point to a signed pass/card provisioning endpoint returned by Ramp.
+  </p>
+</section>
+{% endblock %}

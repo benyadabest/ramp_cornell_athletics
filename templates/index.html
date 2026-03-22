@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="status">
+  <div class="chip {{ 'ok' if openai_set else 'warn' }}">OpenAI key {{ 'set' if openai_set else 'missing' }}</div>
+  <div class="chip {{ 'ok' if tavily_set else 'warn' }}">Tavily key {{ 'set' if tavily_set else 'missing' }}</div>
+  <div class="chip {{ 'ok' if ramp_live else 'warn' }}">Ramp API {{ 'live mode' if ramp_live else 'demo mode' }}</div>
+</section>
+
+{% if msg %}
+<section class="notice ok">{{ msg }}</section>
+{% endif %}
+{% if err %}
+<section class="notice err">{{ err }}</section>
+{% endif %}
+
+<section class="panel">
+  <h2>1) Import roster + schedule from links</h2>
+  <form method="post" action="/import/links" class="grid-two">
+    <label>
+      Roster URL
+      <input type="url" name="roster_url" placeholder="https://cornellbigred.com/sports/wrestling/roster" />
+    </label>
+    <label>
+      Schedule URL
+      <input type="url" name="schedule_url" placeholder="https://cornellbigred.com/sports/wrestling/schedule" />
+    </label>
+    <button type="submit">Import</button>
+  </form>
+</section>
+
+<section class="panel">
+  <h2>2) Current roster</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Name</th>
+        <th>Weight</th>
+        <th>Year</th>
+        <th>Hometown</th>
+        <th>Email</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for athlete in athletes %}
+      <tr>
+        <td>{{ athlete.id }}</td>
+        <td>{{ athlete.name }}</td>
+        <td>{{ athlete.weight_class }}</td>
+        <td>{{ athlete.class_year }}</td>
+        <td>{{ athlete.hometown }}</td>
+        <td>{{ athlete.email }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6">No athletes imported yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section class="panel">
+  <h2>3) Away events -> one-click travel planning</h2>
+  {% for event in away_events %}
+  <details class="card">
+    <summary>
+      <strong>{{ event.opponent }}</strong> | {{ event.event_date or 'TBD' }} | {{ event.location or 'Unknown location' }}
+    </summary>
+    <form method="post" action="/travel/plan/{{ event.id }}" class="grid-three">
+      <label>Travel owner email <input type="email" name="owner_email" value="travelops@cornellwrestling.org" /></label>
+      <label>Spend limit ($) <input type="number" step="0.01" name="spend_limit_dollars" value="3500" /></label>
+      <label>Transport mode <input type="text" name="transport_mode" value="charter bus" /></label>
+      <label>Depart at <input type="text" name="depart_at" placeholder="2026-11-12 08:00 ET" /></label>
+      <label>Return at <input type="text" name="return_at" placeholder="2026-11-14 20:00 ET" /></label>
+      <label>Notes <input type="text" name="notes" placeholder="Rooming list loaded from roster" /></label>
+      <button type="submit">Create Travel Plan + Ramp Card</button>
+    </form>
+  </details>
+  {% else %}
+  <p>No away events imported yet.</p>
+  {% endfor %}
+</section>
+
+<section class="panel">
+  <h2>4) Travel plans and cards</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Event</th>
+        <th>Hotel</th>
+        <th>Transport</th>
+        <th>Ramp Card</th>
+        <th>Wallet Link</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for plan in travel_plans %}
+      <tr>
+        <td>{{ plan.opponent }} ({{ plan.event_date or 'TBD' }})</td>
+        <td>{{ plan.hotel_name }}<br/><span class="muted">{{ plan.hotel_address }}</span></td>
+        <td>{{ plan.transport_mode }}</td>
+        <td>{{ plan.ramp_card_id }} (****{{ plan.ramp_card_last4 }})</td>
+        <td>
+          {% if plan.ramp_wallet_link %}
+          <a href="{{ plan.ramp_wallet_link }}" target="_blank">Card Link</a>
+          {% else %}
+          -
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5">No travel plans yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<section class="panel">
+  <h2>5) Recruiting setup</h2>
+  <form method="post" action="/recruits" class="grid-three">
+    <label>Name <input type="text" name="name" required /></label>
+    <label>Grad year <input type="text" name="grad_year" placeholder="2027" /></label>
+    <label>Weight class <input type="text" name="weight_class" placeholder="165" /></label>
+    <label>Home town <input type="text" name="home_town" placeholder="Rochester, NY" /></label>
+    <label>Guardian email <input type="email" name="guardian_email" /></label>
+    <label>Source URL <input type="url" name="source_url" placeholder="https://..." /></label>
+    <button type="submit">Create Recruit</button>
+  </form>
+
+  <h3>Assign recruits to current athletes + issue card</h3>
+  {% for recruit in recruits %}
+  <details class="card">
+    <summary><strong>{{ recruit.name }}</strong> | {{ recruit.weight_class or 'Unspecified weight' }} | status: {{ recruit.status }}</summary>
+    <form method="post" action="/recruits/{{ recruit.id }}/assign" class="grid-three">
+      <label>
+        Athlete host
+        <select name="athlete_id" required>
+          <option value="">Select athlete</option>
+          {% for athlete in athletes %}
+          <option value="{{ athlete.id }}">{{ athlete.name }} ({{ athlete.weight_class or 'N/A' }})</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Assigned by <input type="text" name="assigned_by" value="Head Coach" /></label>
+      <label>Owner email <input type="email" name="owner_email" value="recruiting@cornellwrestling.org" /></label>
+      <label>Spend limit ($) <input type="number" step="0.01" name="spend_limit_dollars" value="300" /></label>
+      <button type="submit">Assign + Send Wallet Card Link</button>
+    </form>
+  </details>
+  {% else %}
+  <p>No recruits yet.</p>
+  {% endfor %}
+</section>
+
+<section class="panel">
+  <h2>6) Recruit card assignments</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Recruit</th>
+        <th>Athlete Host</th>
+        <th>Limit</th>
+        <th>Ramp Card</th>
+        <th>Wallet</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for assignment in assignments %}
+      <tr>
+        <td>{{ assignment.recruit_name }}</td>
+        <td>{{ assignment.athlete_name }}</td>
+        <td>${{ '%.2f' % (assignment.spend_limit_cents / 100) }}</td>
+        <td>{{ assignment.ramp_card_id }}</td>
+        <td>
+          <a href="{{ assignment.wallet_link }}" target="_blank">Card link</a>
+          {% if assignment.apple_wallet_link %}
+          | <a href="{{ assignment.apple_wallet_link }}" target="_blank">Apple Wallet</a>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5">No assignments yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

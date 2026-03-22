@@ -1,0 +1,156 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: Arial, Helvetica, sans-serif;
+  background: #f5f7fb;
+  color: #182133;
+}
+
+header {
+  background: #b31b1b;
+  color: #fff;
+  padding: 1.2rem 1.5rem;
+}
+
+header h1 {
+  margin: 0 0 0.35rem;
+  font-size: 1.3rem;
+}
+
+header p {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+main {
+  max-width: 1200px;
+  margin: 1rem auto 3rem;
+  padding: 0 1rem;
+}
+
+.status {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.8rem;
+}
+
+.chip {
+  border-radius: 999px;
+  padding: 0.4rem 0.65rem;
+  font-size: 0.85rem;
+}
+
+.chip.ok {
+  background: #daf5e5;
+  color: #0f6f39;
+}
+
+.chip.warn {
+  background: #fff2cf;
+  color: #8a6500;
+}
+
+.notice {
+  margin: 0.5rem 0 1rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: 0.5rem;
+}
+
+.notice.ok {
+  background: #daf5e5;
+}
+
+.notice.err {
+  background: #ffdfe0;
+}
+
+.panel {
+  background: #fff;
+  border-radius: 0.7rem;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.panel h2 {
+  margin-top: 0;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  border-bottom: 1px solid #e8edf7;
+  text-align: left;
+  padding: 0.55rem;
+  vertical-align: top;
+}
+
+th {
+  background: #f1f5ff;
+  font-size: 0.92rem;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.9rem;
+}
+
+input,
+select,
+button {
+  border: 1px solid #c6d0e3;
+  border-radius: 0.45rem;
+  padding: 0.45rem 0.5rem;
+  font-size: 0.95rem;
+}
+
+button {
+  background: #b31b1b;
+  color: #fff;
+  cursor: pointer;
+}
+
+.grid-two {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.grid-three {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.card {
+  border: 1px solid #e1e6f0;
+  border-radius: 0.6rem;
+  padding: 0.6rem;
+  margin-bottom: 0.7rem;
+}
+
+.card summary {
+  cursor: pointer;
+  margin-bottom: 0.6rem;
+}
+
+.muted {
+  color: #5c687d;
+  font-size: 0.84rem;
+}
+
+@media (max-width: 900px) {
+  .grid-two,
+  .grid-three {
+    grid-template-columns: 1fr;
+  }
+}
