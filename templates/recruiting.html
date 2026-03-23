@@ -1,0 +1,266 @@
+{% extends "base.html" %}
+{% block title_suffix %} - Recruiting{% endblock %}
+
+{% block header_right %}
+<div class="sport-dropdown-wrap">
+  <select class="sport-dropdown" onchange="window.location='/recruiting?sport='+encodeURIComponent(this.value)">
+    <option value="" {{ 'selected' if not selected_sport else '' }}>All Sports</option>
+    {% for s in sports %}
+    <option value="{{ s }}" {{ 'selected' if selected_sport == s else '' }}>{{ s }}</option>
+    {% endfor %}
+  </select>
+</div>
+{% endblock %}
+
+{% block content %}
+<!-- Recruits Table -->
+<section class="panel">
+  <div class="panel-header">
+    <h2>Recruits</h2>
+    <div style="display:flex;align-items:center;gap:0.75rem">
+      <span class="muted">{{ recruits | length }} total</span>
+      <button type="button" class="btn-primary" style="padding:0.4rem 0.9rem;font-size:0.9rem" onclick="openRecruitModal()">+ Add Recruit</button>
+    </div>
+  </div>
+  <table id="recruits-table">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Grad Year</th>
+        <th>Weight Class</th>
+        <th>Hometown</th>
+        <th>Guardian Email</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for recruit in recruits %}
+      <tr>
+        <td><strong>{{ recruit.name }}</strong></td>
+        <td>{{ recruit.grad_year or '-' }}</td>
+        <td>{{ recruit.weight_class or '-' }}</td>
+        <td>{{ recruit.home_town or '-' }}</td>
+        <td>{{ recruit.guardian_email or '-' }}</td>
+        <td><span class="chip {{ 'ok' if recruit.status == 'assigned' else 'warn' }}">{{ recruit.status }}</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<!-- Assignments -->
+{% if assignments %}
+<section class="panel">
+  <div class="panel-header">
+    <h2>Card Assignments</h2>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Recruit</th>
+        <th>Athlete Host</th>
+        <th>Limit</th>
+        <th>Ramp Card</th>
+        <th>Wallet</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for assignment in assignments %}
+      <tr>
+        <td>{{ assignment.recruit_name }}</td>
+        <td>{{ assignment.athlete_name }}</td>
+        <td>${{ '%.2f' % (assignment.spend_limit_cents / 100) }}</td>
+        <td class="muted">{{ assignment.ramp_card_id }}</td>
+        <td>
+          <a href="{{ assignment.wallet_link }}" target="_blank">Card link</a>
+          {% if assignment.apple_wallet_link %}
+          | <a href="{{ assignment.apple_wallet_link }}" target="_blank">Apple Wallet</a>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+
+<!-- Chat Modal -->
+<div id="recruit-modal" class="modal-overlay" style="display:none">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3 style="margin:0">Add Recruit</h3>
+      <button type="button" class="modal-close" onclick="closeRecruitModal()">&times;</button>
+    </div>
+    <div id="recruit-chat" class="chat-area" style="margin-top:0.75rem">
+      <div id="recruit-chat-messages" class="chat-messages">
+        <div class="chat-msg system">
+          Describe the recruit — name, weight class, hometown, grad year, guardian email, etc. I'll extract and enrich the data.
+        </div>
+      </div>
+      <div class="chat-input-row">
+        <input type="text" id="recruit-chat-input" class="chat-input"
+               placeholder='e.g. "John Smith, 165, from Rochester NY, class of 2027"'
+               onkeydown="if(event.key==='Enter')sendRecruitChat()" />
+        <button type="button" onclick="sendRecruitChat()">Send</button>
+      </div>
+    </div>
+
+    <!-- Preview card (hidden until data extracted) -->
+    <div id="recruit-preview" class="recruit-preview" style="display:none">
+      <h4 style="margin:0 0 0.5rem;font-size:0.88rem;color:#5c687d;text-transform:uppercase;letter-spacing:0.03em">Recruit Preview</h4>
+      <div class="preview-grid">
+        <div><span class="summary-label">Name</span> <span id="rp-name"></span></div>
+        <div><span class="summary-label">Grad Year</span> <span id="rp-grad-year"></span></div>
+        <div><span class="summary-label">Weight Class</span> <span id="rp-weight-class"></span></div>
+        <div><span class="summary-label">Hometown</span> <span id="rp-hometown"></span></div>
+        <div><span class="summary-label">Guardian Email</span> <span id="rp-email"></span></div>
+      </div>
+      <button type="button" class="btn-primary" style="margin-top:0.75rem;width:100%" onclick="confirmRecruit()">Confirm &amp; Add to Table</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  var conversationHistory = [];
+  var currentRecruit = {};
+  var sport = '{{ selected_sport }}';
+
+  window.openRecruitModal = function() {
+    document.getElementById('recruit-modal').style.display = 'flex';
+    conversationHistory = [];
+    currentRecruit = {};
+    document.getElementById('recruit-preview').style.display = 'none';
+    var msgs = document.getElementById('recruit-chat-messages');
+    msgs.innerHTML = '<div class="chat-msg system">Describe the recruit — name, weight class, hometown, grad year, guardian email, etc. I\'ll extract and enrich the data.</div>';
+    document.getElementById('recruit-chat-input').focus();
+  };
+
+  window.closeRecruitModal = function() {
+    document.getElementById('recruit-modal').style.display = 'none';
+  };
+
+  // Close on backdrop click
+  document.getElementById('recruit-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeRecruitModal();
+  });
+
+  var chatMessages = document.getElementById('recruit-chat-messages');
+
+  function addMsg(text, cls) {
+    var div = document.createElement('div');
+    div.className = 'chat-msg ' + cls;
+    div.textContent = text;
+    chatMessages.appendChild(div);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+    return div;
+  }
+
+  window.sendRecruitChat = function() {
+    var input = document.getElementById('recruit-chat-input');
+    var msg = input.value.trim();
+    if (!msg) return;
+    input.value = '';
+    addMsg(msg, 'user');
+
+    conversationHistory.push({role: 'user', content: msg});
+    addMsg('Thinking...', 'system thinking');
+
+    fetch('/api/recruiting/chat', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        message: msg,
+        conversation_history: conversationHistory,
+        sport: sport
+      })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      var thinking = chatMessages.querySelector('.thinking');
+      if (thinking) thinking.remove();
+
+      if (d.error) { addMsg('Error: ' + d.error, 'system'); return; }
+
+      // Merge into current recruit data
+      if (d.name) currentRecruit.name = d.name;
+      if (d.grad_year) currentRecruit.grad_year = d.grad_year;
+      if (d.weight_class) currentRecruit.weight_class = d.weight_class;
+      if (d.home_town) currentRecruit.home_town = d.home_town;
+      if (d.guardian_email) currentRecruit.guardian_email = d.guardian_email;
+      if (d.source_url) currentRecruit.source_url = d.source_url;
+
+      // Show reply
+      var reply = d.reply || 'Got it!';
+      addMsg(reply, 'system');
+      conversationHistory.push({role: 'assistant', content: reply});
+
+      // Show preview if we have a name
+      if (currentRecruit.name) {
+        showPreview();
+      }
+    })
+    .catch(function() {
+      var thinking = chatMessages.querySelector('.thinking');
+      if (thinking) thinking.remove();
+      addMsg('Something went wrong. Try again.', 'system');
+    });
+  };
+
+  function showPreview() {
+    document.getElementById('rp-name').textContent = currentRecruit.name || '-';
+    document.getElementById('rp-grad-year').textContent = currentRecruit.grad_year || '-';
+    document.getElementById('rp-weight-class').textContent = currentRecruit.weight_class || '-';
+    document.getElementById('rp-hometown').textContent = currentRecruit.home_town || '-';
+    document.getElementById('rp-email').textContent = currentRecruit.guardian_email || '-';
+    document.getElementById('recruit-preview').style.display = '';
+  }
+
+  window.confirmRecruit = function() {
+    if (!currentRecruit.name) return;
+
+    fetch('/api/recruiting/confirm', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(currentRecruit)
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (!d.ok) { addMsg('Error: ' + (d.error || 'Unknown'), 'system'); return; }
+
+      // Add row to table
+      var tbody = document.querySelector('#recruits-table tbody');
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td><strong>' + esc(currentRecruit.name) + '</strong></td>' +
+        '<td>' + esc(currentRecruit.grad_year || '-') + '</td>' +
+        '<td>' + esc(currentRecruit.weight_class || '-') + '</td>' +
+        '<td>' + esc(currentRecruit.home_town || '-') + '</td>' +
+        '<td>' + esc(currentRecruit.guardian_email || '-') + '</td>' +
+        '<td><span class="chip warn">new</span></td>';
+      tbody.insertBefore(tr, tbody.firstChild);
+
+      // Update count
+      var countEl = document.querySelector('.panel-header .muted');
+      if (countEl) {
+        var n = tbody.querySelectorAll('tr').length;
+        countEl.textContent = n + ' total';
+      }
+
+      closeRecruitModal();
+    })
+    .catch(function() {
+      addMsg('Failed to save. Try again.', 'system');
+    });
+  };
+
+  function esc(s) {
+    var d = document.createElement('div');
+    d.textContent = s;
+    return d.innerHTML;
+  }
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,408 @@
+{% extends "base.html" %}
+{% block title_suffix %} - Travel Planning{% endblock %}
+
+{% block header_right %}
+<div class="sport-dropdown-wrap">
+  <select class="sport-dropdown" onchange="window.location='/travel?sport='+encodeURIComponent(this.value)">
+    <option value="" {{ 'selected' if not selected_sport else '' }}>All Sports</option>
+    {% for s in sports %}
+    <option value="{{ s }}" {{ 'selected' if selected_sport == s else '' }}>{{ s }}</option>
+    {% endfor %}
+  </select>
+</div>
+{% endblock %}
+
+{% block content %}
+<!-- Event Selector -->
+<section class="panel">
+  <div class="panel-header">
+    <h2>Travel Planning</h2>
+  </div>
+  <label class="event-selector-label">
+    Away Event
+    <select id="event-select" class="event-select" onchange="selectEvent(this.value)">
+      <option value="">Choose an away event...</option>
+      {% for event in away_events %}
+      <option value="{{ event.id }}"
+              data-opponent="{{ event.opponent }}"
+              data-date="{{ event.event_date or 'TBD' }}"
+              data-location="{{ event.location or '' }}"
+              data-venue="{{ event.venue or '' }}"
+              data-sport="{{ event.sport or '' }}"
+              {{ 'selected' if selected_event_id == event.id else '' }}>
+        {{ event.opponent }} — {{ event.event_date or 'TBD' }} — {{ event.location or 'TBD' }}{% if event.sport %} ({{ event.sport }}){% endif %}
+      </option>
+      {% endfor %}
+    </select>
+  </label>
+</section>
+
+<!-- Planning workspace (hidden until event selected) -->
+<div id="planning-workspace" style="{{ '' if selected_event else 'display:none' }}">
+
+  <!-- Travel Party -->
+  <section class="panel">
+    <div class="panel-header">
+      <h2>Travel Party</h2>
+      <span class="muted" id="party-count">{{ starters | length }} people</span>
+    </div>
+    <div class="travel-party-list" id="travel-party">
+      {% for s in starters %}
+      <span class="travel-person" data-id="{{ s.id }}">
+        {{ s.name }}
+        <button type="button" class="remove-person" onclick="removePerson(this)" title="Remove">&times;</button>
+      </span>
+      {% endfor %}
+    </div>
+    <div class="add-person-row">
+      <select id="add-person-select">
+        <option value="">Add athlete to party...</option>
+        {% set starter_ids = starters | map(attribute='id') | list %}
+        {% for a in athletes %}
+        <option value="{{ a.id }}" data-name="{{ a.name }}"
+                {{ 'disabled' if a.id in starter_ids else '' }}>
+          {{ a.name }}{% if a.id in starter_ids %} (already added){% endif %}
+        </option>
+        {% endfor %}
+      </select>
+      <button type="button" class="btn-secondary" onclick="addPerson()">Add</button>
+    </div>
+  </section>
+
+  <!-- Chat Planning -->
+  <section class="panel">
+    <div class="panel-header">
+      <h2>Plan This Trip</h2>
+    </div>
+    <div id="chat-area" class="chat-area">
+      <div id="chat-messages" class="chat-messages">
+        <div class="chat-msg system">
+          Tell me about your travel needs and I'll put together a plan.
+        </div>
+      </div>
+      <div class="chat-input-row">
+        <input type="text" id="chat-input" class="chat-input"
+               placeholder='e.g. "leaving the 11th, back the 14th, fly there drive back, 3 per room, $80 per guy"'
+               onkeydown="if(event.key==='Enter')sendChat()" />
+        <button type="button" onclick="sendChat()" id="chat-send-btn">Send</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Final Plan (hidden until chat fills it) -->
+  <section class="panel" id="plan-section" style="display:none">
+    <div class="panel-header">
+      <h2>Trip Summary</h2>
+    </div>
+    <form method="post" id="plan-form" action="">
+      <div class="plan-summary" id="plan-summary"></div>
+      <p class="muted" id="card-note"></p>
+      <input type="hidden" name="owner_email" value="travelops@cornellwrestling.org" />
+      <input type="hidden" name="sport" value="{{ selected_sport }}" />
+      <input type="hidden" name="hotel_name" id="f-hotel-name" />
+      <input type="hidden" name="hotel_address" id="f-hotel-address" />
+      <input type="hidden" name="spend_limit_dollars" id="f-spend-limit" />
+      <input type="hidden" name="transport_mode" id="f-transport" />
+      <input type="hidden" name="depart_at" id="f-depart" />
+      <input type="hidden" name="return_at" id="f-return" />
+      <input type="hidden" name="notes" id="f-notes" />
+      <input type="hidden" name="athlete_ids" id="f-athlete-ids" />
+      <button type="submit" class="btn-primary">Create Travel Plan + Issue Ramp Cards</button>
+    </form>
+  </section>
+</div>
+
+<!-- Existing Plans -->
+{% if travel_plans %}
+<section class="panel">
+  <div class="panel-header">
+    <h2>Existing Travel Plans</h2>
+  </div>
+  {% for item in travel_plans %}
+  {% set plan = item.plan %}
+  {% set cards = item.cards %}
+  <details class="card">
+    <summary>
+      <strong>{{ plan.opponent }}</strong> ({{ plan.event_date or 'TBD' }})
+      — {{ plan.hotel_name }} — {{ plan.transport_mode }}
+      <span class="muted">· {{ cards | length }} card{{ 's' if cards | length != 1 else '' }} issued</span>
+    </summary>
+    <div class="card-body">
+      <div class="summary-row"><span class="summary-label">Hotel</span><span class="summary-value">{{ plan.hotel_name }} <span class="muted">{{ plan.hotel_address }}</span></span></div>
+      <div class="summary-row"><span class="summary-label">Transport</span><span class="summary-value">{{ plan.transport_mode }}</span></div>
+      <div class="summary-row"><span class="summary-label">Depart</span><span class="summary-value">{{ plan.depart_at or 'TBD' }}</span></div>
+      <div class="summary-row"><span class="summary-label">Return</span><span class="summary-value">{{ plan.return_at or 'TBD' }}</span></div>
+      {% if plan.notes %}<div class="summary-row"><span class="summary-label">Notes</span><span class="summary-value">{{ plan.notes }}</span></div>{% endif %}
+      {% if cards %}
+      <table style="margin-top:0.75rem">
+        <thead><tr><th>Athlete</th><th>Card ID</th><th>Last 4</th><th>Limit</th><th>Wallet</th></tr></thead>
+        <tbody>
+          {% for c in cards %}
+          <tr>
+            <td>{{ c.athlete_name }}</td>
+            <td class="muted">{{ c.ramp_card_id }}</td>
+            <td>****{{ c.ramp_card_last4 }}</td>
+            <td>${{ (c.spend_limit_cents / 100) | int }}</td>
+            <td>{% if c.wallet_link %}<a href="{{ c.wallet_link }}" target="_blank">Card Link</a>{% else %}-{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+    </div>
+  </details>
+  {% endfor %}
+</section>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  var planData = {};
+  var selectedHotel = null;
+  var eventId = {{ selected_event_id or 0 }};
+  var sport = '{{ selected_sport }}';
+
+  // Always refresh athlete IDs on form submit
+  var planForm = document.getElementById('plan-form');
+  if (planForm) {
+    planForm.addEventListener('submit', function() {
+      var ids = [];
+      document.querySelectorAll('#travel-party .travel-person').forEach(function(p) {
+        if (p.dataset.id) ids.push(p.dataset.id);
+      });
+      document.getElementById('f-athlete-ids').value = ids.join(',');
+    });
+  }
+
+  window.selectEvent = function(id) {
+    if (!id) return;
+    var params = new URLSearchParams(window.location.search);
+    params.set('event_id', id);
+    if (sport) params.set('sport', sport);
+    window.location = '/travel?' + params.toString();
+  };
+
+  // Travel party management
+  window.removePerson = function(btn) {
+    var pill = btn.closest('.travel-person');
+    var id = pill.dataset.id;
+    pill.remove();
+    var opt = document.querySelector('#add-person-select option[value="'+id+'"]');
+    if (opt) { opt.disabled = false; opt.textContent = opt.dataset.name; }
+    updatePartyCount();
+  };
+
+  window.addPerson = function() {
+    var sel = document.getElementById('add-person-select');
+    var opt = sel.options[sel.selectedIndex];
+    if (!opt || !opt.value) return;
+    var id = opt.value;
+    var name = opt.dataset.name;
+    var party = document.getElementById('travel-party');
+    var pill = document.createElement('span');
+    pill.className = 'travel-person';
+    pill.dataset.id = id;
+    pill.innerHTML = name + ' <button type="button" class="remove-person" onclick="removePerson(this)" title="Remove">&times;</button>';
+    party.appendChild(pill);
+    opt.disabled = true;
+    opt.textContent = name + ' (already added)';
+    sel.selectedIndex = 0;
+    updatePartyCount();
+  };
+
+  function updatePartyCount() {
+    var n = document.querySelectorAll('#travel-party .travel-person').length;
+    document.getElementById('party-count').textContent = n + ' people';
+  }
+
+  // Chat
+  var chatMessages = document.getElementById('chat-messages');
+  var chatInput = document.getElementById('chat-input');
+
+  function addMsg(text, cls) {
+    var div = document.createElement('div');
+    div.className = 'chat-msg ' + cls;
+    div.textContent = text;
+    chatMessages.appendChild(div);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+    return div;
+  }
+
+  function addHotelCards(hotels) {
+    var wrapper = document.createElement('div');
+    wrapper.className = 'chat-msg system';
+    var label = document.createElement('div');
+    label.className = 'chat-hotel-label';
+    label.textContent = 'Here are some hotel options near the venue:';
+    wrapper.appendChild(label);
+
+    var scroll = document.createElement('div');
+    scroll.className = 'chat-hotels-scroll';
+
+    hotels.forEach(function(h, i) {
+      var card = document.createElement('div');
+      card.className = 'hotel-card' + (i === 0 ? ' selected' : '');
+      card.innerHTML =
+        '<div class="hotel-name">' + h.name + '</div>' +
+        '<div class="hotel-address muted">' + h.address + '</div>' +
+        '<div class="hotel-prices">' +
+          '<span class="price-listed">$' + h.listed_price + '<small>/night</small></span>' +
+          '<span class="price-ours">$' + h.our_price + '<small>/night our rate</small></span>' +
+        '</div>' +
+        (h.notes ? '<div class="hotel-notes muted">' + h.notes + '</div>' : '');
+      card.onclick = function() {
+        scroll.querySelectorAll('.hotel-card').forEach(function(c) { c.classList.remove('selected'); });
+        card.classList.add('selected');
+        selectedHotel = h;
+        showPlanSummary();
+      };
+      scroll.appendChild(card);
+      if (i === 0) selectedHotel = h;
+    });
+
+    wrapper.appendChild(scroll);
+    chatMessages.appendChild(wrapper);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+  }
+
+  window.sendChat = function() {
+    var msg = chatInput.value.trim();
+    if (!msg) return;
+    chatInput.value = '';
+    addMsg(msg, 'user');
+
+    var sel = document.getElementById('event-select');
+    var opt = sel.options[sel.selectedIndex];
+    var ctx = opt ? (opt.dataset.opponent + ' at ' + opt.dataset.location + ' on ' + opt.dataset.date) : '';
+
+    addMsg('Thinking...', 'system thinking');
+
+    fetch('/api/travel/chat', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ message: msg, event_context: ctx })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      var thinking = chatMessages.querySelector('.thinking');
+      if (thinking) thinking.remove();
+
+      if (d.error) { addMsg('Error: ' + d.error, 'system'); return; }
+
+      planData = Object.assign(planData, d);
+
+      // Build response
+      var parts = [];
+      if (d.depart_date) parts.push('Depart: ' + d.depart_date);
+      if (d.return_date) parts.push('Return: ' + d.return_date);
+      if (d.transport_there) parts.push('There: ' + d.transport_there);
+      if (d.transport_back) parts.push('Back: ' + d.transport_back);
+      if (d.people_per_room) parts.push(d.people_per_room + ' per room');
+      if (d.spend_limit_per_person) parts.push('$' + d.spend_limit_per_person + '/person');
+      if (d.total_spend_limit) parts.push('Total budget: $' + d.total_spend_limit);
+      if (d.hotel_preferences) parts.push('Hotel pref: ' + d.hotel_preferences);
+      if (d.notes) parts.push('Notes: ' + d.notes);
+
+      if (parts.length) {
+        addMsg('Got it!\n' + parts.join('\n'), 'system');
+      }
+
+      if (d.missing && d.missing.length > 0) {
+        addMsg('One more thing — what about ' + d.missing.join(', ') + '?', 'system');
+      }
+
+      // Search hotels and embed in chat
+      if (d.depart_date || d.return_date) {
+        var location = opt ? opt.dataset.location : '';
+        var dates = (planData.depart_date || '') + ' to ' + (planData.return_date || '');
+        addMsg('Finding hotels...', 'system thinking');
+
+        fetch('/api/travel/hotels', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ location: location, dates: dates, preferences: planData.hotel_preferences || '' })
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(hotels) {
+          var ht = chatMessages.querySelector('.thinking');
+          if (ht) ht.remove();
+          addHotelCards(hotels);
+          if (planData.depart_date && planData.return_date) {
+            showPlanSummary();
+          }
+        });
+      }
+
+      if (planData.depart_date && planData.return_date && (planData.transport_there || planData.transport_back)) {
+        showPlanSummary();
+      }
+    })
+    .catch(function(e) {
+      var thinking = chatMessages.querySelector('.thinking');
+      if (thinking) thinking.remove();
+      addMsg('Something went wrong. Try again.', 'system');
+    });
+  };
+
+  function showPlanSummary() {
+    var section = document.getElementById('plan-section');
+    var summary = document.getElementById('plan-summary');
+    var partyCount = document.querySelectorAll('#travel-party .travel-person').length;
+
+    var transport = planData.transport_there || '';
+    if (planData.transport_back && planData.transport_back !== planData.transport_there) {
+      transport += ' there, ' + planData.transport_back + ' back';
+    }
+
+    var totalBudget = planData.total_spend_limit;
+    if (!totalBudget && planData.spend_limit_per_person && partyCount) {
+      totalBudget = planData.spend_limit_per_person * partyCount;
+    }
+
+    var rows = [];
+    if (planData.depart_date) rows.push(['Depart', planData.depart_date]);
+    if (planData.return_date) rows.push(['Return', planData.return_date]);
+    if (transport) rows.push(['Transport', transport]);
+    rows.push(['Travel Party', partyCount + ' people']);
+    if (planData.people_per_room) rows.push(['Rooming', planData.people_per_room + ' per room']);
+    if (selectedHotel) rows.push(['Hotel', selectedHotel.name + ' — $' + selectedHotel.our_price + '/night']);
+    if (totalBudget) rows.push(['Budget', '$' + totalBudget + ' total']);
+    if (planData.notes) rows.push(['Notes', planData.notes]);
+
+    summary.innerHTML = rows.map(function(r) {
+      return '<div class="summary-row"><span class="summary-label">' + r[0] + '</span><span class="summary-value">' + r[1] + '</span></div>';
+    }).join('');
+
+    // Card note
+    var perPerson = planData.spend_limit_per_person || (totalBudget ? Math.round(totalBudget / (partyCount || 1)) : null);
+    var cardNote = document.getElementById('card-note');
+    if (partyCount && perPerson) {
+      cardNote.textContent = partyCount + ' Ramp cards will be issued — one per athlete' + (perPerson ? ', $' + perPerson + ' limit each' : '');
+    } else if (partyCount) {
+      cardNote.textContent = partyCount + ' Ramp cards will be issued — one per athlete';
+    }
+
+    document.getElementById('f-depart').value = planData.depart_date || '';
+    document.getElementById('f-return').value = planData.return_date || '';
+    document.getElementById('f-transport').value = transport;
+    document.getElementById('f-spend-limit').value = totalBudget || '3500';
+    document.getElementById('f-hotel-name').value = selectedHotel ? selectedHotel.name : '';
+    document.getElementById('f-hotel-address').value = selectedHotel ? selectedHotel.address : '';
+    document.getElementById('f-notes').value = planData.notes || '';
+
+    document.getElementById('plan-form').action = '/travel/plan/' + eventId + '?sport=' + encodeURIComponent(sport);
+
+    // Collect athlete IDs from travel party
+    var ids = [];
+    document.querySelectorAll('#travel-party .travel-person').forEach(function(p) {
+      if (p.dataset.id) ids.push(p.dataset.id);
+    });
+    document.getElementById('f-athlete-ids').value = ids.join(',');
+
+    section.style.display = '';
+  }
+})();
+</script>
+{% endblock %}

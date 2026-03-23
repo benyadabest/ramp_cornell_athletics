@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cornell Athletics{% block title_suffix %}{% endblock %}</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <header>
+      <div class="header-row">
+        <div>
+          <h1>Cornell Athletics</h1>
+        </div>
+        {% block header_right %}{% endblock %}
+      </div>
+      <nav class="nav-tabs">
+        <a href="/roster{% if selected_sport %}?sport={{ selected_sport | urlencode }}{% endif %}"
+           class="nav-tab {{ 'active' if active_tab == 'roster' else '' }}">Roster</a>
+        <a href="/travel{% if selected_sport %}?sport={{ selected_sport | urlencode }}{% endif %}"
+           class="nav-tab {{ 'active' if active_tab == 'travel' else '' }}">Travel Planning</a>
+        <a href="/recruiting{% if selected_sport %}?sport={{ selected_sport | urlencode }}{% endif %}"
+           class="nav-tab {{ 'active' if active_tab == 'recruiting' else '' }}">Recruiting</a>
+        <a href="/recruiting/visits{% if selected_sport %}?sport={{ selected_sport | urlencode }}{% endif %}"
+           class="nav-tab {{ 'active' if active_tab == 'visits' else '' }}">Recruit Visits</a>
+      </nav>
+    </header>
+    <main>
+      {% if msg %}
+      <section class="notice ok">{{ msg }}</section>
+      {% endif %}
+      {% if err %}
+      <section class="notice err">{{ err }}</section>
+      {% endif %}
+      {% block content %}{% endblock %}
+    </main>
+
+    <!-- Loading overlay -->
+    <div id="loading-overlay" class="loading-overlay" style="display:none;">
+      <div class="loading-box">
+        <div class="spinner"></div>
+        <div id="loading-steps" class="loading-steps"></div>
+      </div>
+    </div>
+
+    <script>
+    (function() {
+      // --- Loading overlay for forms ---
+      var overlay = document.getElementById('loading-overlay');
+      var stepsEl = document.getElementById('loading-steps');
+
+      var stepMap = {
+        '/travel/plan': ['Looking up venue...', 'Searching for hotels...', 'Provisioning Ramp cards...', 'Creating travel plan...'],
+        '/recruits': ['Creating recruit record...', 'Saving to database...'],
+        '/assign': ['Provisioning Ramp card...', 'Issuing wallet link...', 'Assigning recruit...'],
+        '/recruiting/visits': ['Matching host athletes...', 'Provisioning Ramp cards...', 'Issuing wallet links...', 'Creating visit plan...']
+      };
+
+      function getSteps(action) {
+        for (var key in stepMap) { if (action.indexOf(key) !== -1) return stepMap[key]; }
+        return ['Processing...'];
+      }
+
+      function showLoading(steps) {
+        stepsEl.innerHTML = '';
+        steps.forEach(function(text) {
+          var div = document.createElement('div');
+          div.className = 'step pending';
+          div.textContent = text;
+          stepsEl.appendChild(div);
+        });
+        overlay.style.display = 'flex';
+        animateSteps(0, steps.length);
+      }
+
+      function animateSteps(idx, total) {
+        if (idx >= total) return;
+        var children = stepsEl.children;
+        children[idx].className = 'step active';
+        if (idx > 0) children[idx - 1].className = 'step done';
+        setTimeout(function() { animateSteps(idx + 1, total); }, 1200 + Math.random() * 1800);
+      }
+
+      document.querySelectorAll('form[method="post"]').forEach(function(form) {
+        form.addEventListener('submit', function(e) {
+          var action = form.getAttribute('action') || '';
+          var steps = getSteps(action);
+          if (steps[0] === 'Processing...') return;
+          e.preventDefault();
+          showLoading(steps);
+          fetch(action, { method: 'POST', body: new FormData(form), redirect: 'follow' })
+            .then(function(r) { window.location.href = r.url; })
+            .catch(function() { window.location.reload(); });
+        });
+      });
+    })();
+    </script>
+    {% block scripts %}{% endblock %}
+  </body>
+</html>

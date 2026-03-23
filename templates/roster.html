@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title_suffix %} - Roster{% endblock %}
+
+{% block header_right %}
+<div class="sport-dropdown-wrap">
+  <select class="sport-dropdown" onchange="window.location='/roster?sport='+encodeURIComponent(this.value)">
+    <option value="" {{ 'selected' if not selected_sport else '' }}>All Sports ({{ athletes | length }})</option>
+    {% for s in sports %}
+    <option value="{{ s }}" {{ 'selected' if selected_sport == s else '' }}>{{ s }}</option>
+    {% endfor %}
+  </select>
+</div>
+{% endblock %}
+
+{% block content %}
+<section class="panel">
+  <div class="panel-header">
+    <h2>Roster</h2>
+    <span class="muted" id="starter-count">{{ starters | length }} starter{{ 's' if starters | length != 1 else '' }}</span>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th class="col-star"></th>
+        <th>Name</th>
+        {% if not selected_sport %}<th>Sport</th>{% endif %}
+        <th>Weight</th>
+        <th>Year</th>
+        <th>Hometown</th>
+        <th>Email</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for athlete in athletes %}
+      <tr class="{{ 'starter-row' if athlete.is_starter else '' }}">
+        <td class="col-star">
+          <button type="button" class="star-btn {{ 'active' if athlete.is_starter else '' }}"
+                  data-athlete-id="{{ athlete.id }}" title="Toggle starter">
+            {{ '\u2605' if athlete.is_starter else '\u2606' }}
+          </button>
+        </td>
+        <td class="athlete-name">{{ athlete.name }}</td>
+        {% if not selected_sport %}<td>{{ athlete.sport or '' }}</td>{% endif %}
+        <td>{{ athlete.weight_class or '' }}</td>
+        <td>{{ athlete.class_year or '' }}</td>
+        <td>{{ athlete.hometown or '' }}</td>
+        <td>
+          <input type="email" class="inline-email"
+                 value="{{ athlete.email or '' }}"
+                 data-athlete-id="{{ athlete.id }}"
+                 placeholder="Add email..." />
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="{{ 6 if selected_sport else 7 }}">No athletes yet. Run <code>python collect.py</code> to import.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  // Star toggle
+  document.querySelectorAll('.star-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      fetch('/athletes/' + btn.dataset.athleteId + '/starter', { method: 'PATCH' })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+          if (!d.ok) return;
+          btn.classList.toggle('active', d.is_starter);
+          btn.textContent = d.is_starter ? '\u2605' : '\u2606';
+          btn.closest('tr').classList.toggle('starter-row', d.is_starter);
+          var count = document.querySelectorAll('.star-btn.active').length;
+          document.getElementById('starter-count').textContent = count + ' starter' + (count !== 1 ? 's' : '');
+        });
+    });
+  });
+
+  // Inline email editing
+  document.querySelectorAll('.inline-email').forEach(function(input) {
+    var saved = input.value;
+    input.addEventListener('blur', function() {
+      if (input.value === saved) return;
+      var fd = new FormData();
+      fd.append('email', input.value);
+      fetch('/athletes/' + input.dataset.athleteId + '/email', { method: 'PATCH', body: fd })
+        .then(function(r) {
+          if (r.ok) { saved = input.value; input.style.outline = '2px solid #2ecc40'; }
+          else { input.style.outline = '2px solid #e74c3c'; }
+          setTimeout(function() { input.style.outline = ''; }, 800);
+        });
+    });
+    input.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    });
+  });
+})();
+</script>
+{% endblock %}
