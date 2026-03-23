@@ -21,6 +21,8 @@ class Settings:
     openai_model: str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
     tavily_api_key: str = os.getenv("TAVILY_API_KEY", "")
 
+    perplexity_api_key: str = os.getenv("PERPLEXITY_API_KEY", "")
+
     ramp_client_id: str = os.getenv("RAMP_CLIENT_ID", "")
     ramp_client_secret: str = os.getenv("RAMP_CLIENT_SECRET", "")
     ramp_token_url: str = os.getenv(

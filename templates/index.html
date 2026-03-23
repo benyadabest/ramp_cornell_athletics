@@ -1,4 +1,16 @@
 {% extends "base.html" %}
+
+{% block header_right %}
+<div class="sport-dropdown-wrap">
+  <select id="sport-select" class="sport-dropdown" onchange="window.location='/?sport='+encodeURIComponent(this.value)">
+    <option value="" {{ 'selected' if not selected_sport else '' }}>All Sports ({{ athletes | length }} athletes)</option>
+    {% for s in sports %}
+    <option value="{{ s }}" {{ 'selected' if selected_sport == s else '' }}>{{ s }}</option>
+    {% endfor %}
+  </select>
+</div>
+{% endblock %}
+
 {% block content %}
 <section class="status">
   <div class="chip {{ 'ok' if openai_set else 'warn' }}">OpenAI key {{ 'set' if openai_set else 'missing' }}</div>
@@ -13,28 +25,18 @@
 <section class="notice err">{{ err }}</section>
 {% endif %}
 
+<!-- Roster -->
 <section class="panel">
-  <h2>1) Import roster + schedule from links</h2>
-  <form method="post" action="/import/links" class="grid-two">
-    <label>
-      Roster URL
-      <input type="url" name="roster_url" placeholder="https://cornellbigred.com/sports/wrestling/roster" />
-    </label>
-    <label>
-      Schedule URL
-      <input type="url" name="schedule_url" placeholder="https://cornellbigred.com/sports/wrestling/schedule" />
-    </label>
-    <button type="submit">Import</button>
-  </form>
-</section>
-
-<section class="panel">
-  <h2>2) Current roster</h2>
+  <div class="panel-header">
+    <h2>Roster</h2>
+    <span class="muted">{{ starters | length }} starter{{ 's' if starters | length != 1 else '' }} selected</span>
+  </div>
   <table>
     <thead>
       <tr>
-        <th>ID</th>
+        <th class="col-star"></th>
         <th>Name</th>
+        {% if not selected_sport %}<th>Sport</th>{% endif %}
         <th>Weight</th>
         <th>Year</th>
         <th>Hometown</th>
@@ -43,45 +45,76 @@
     </thead>
     <tbody>
       {% for athlete in athletes %}
-      <tr>
-        <td>{{ athlete.id }}</td>
-        <td>{{ athlete.name }}</td>
-        <td>{{ athlete.weight_class }}</td>
-        <td>{{ athlete.class_year }}</td>
-        <td>{{ athlete.hometown }}</td>
-        <td>{{ athlete.email }}</td>
+      <tr class="{{ 'starter-row' if athlete.is_starter else '' }}">
+        <td class="col-star">
+          <button type="button" class="star-btn {{ 'active' if athlete.is_starter else '' }}"
+                  data-athlete-id="{{ athlete.id }}" title="Toggle starter">
+            {{ '\u2605' if athlete.is_starter else '\u2606' }}
+          </button>
+        </td>
+        <td class="athlete-name">{{ athlete.name }}</td>
+        {% if not selected_sport %}<td>{{ athlete.sport or '' }}</td>{% endif %}
+        <td>{{ athlete.weight_class or '' }}</td>
+        <td>{{ athlete.class_year or '' }}</td>
+        <td>{{ athlete.hometown or '' }}</td>
+        <td>
+          <input type="email" class="inline-email"
+                 value="{{ athlete.email or '' }}"
+                 data-athlete-id="{{ athlete.id }}"
+                 placeholder="Add email..." />
+        </td>
       </tr>
       {% else %}
-      <tr><td colspan="6">No athletes imported yet.</td></tr>
+      <tr><td colspan="{{ 6 if selected_sport else 7 }}">No athletes imported yet.</td></tr>
       {% endfor %}
     </tbody>
   </table>
 </section>
 
+<!-- Away Travel Planning -->
 <section class="panel">
-  <h2>3) Away events -> one-click travel planning</h2>
+  <div class="panel-header">
+    <h2>Away Travel Planning</h2>
+  </div>
   {% for event in away_events %}
   <details class="card">
     <summary>
-      <strong>{{ event.opponent }}</strong> | {{ event.event_date or 'TBD' }} | {{ event.location or 'Unknown location' }}
+      <strong>{{ event.opponent }}</strong>
+      <span class="muted">{{ event.event_date or 'TBD' }} &middot; {{ event.location or 'Unknown location' }}</span>
     </summary>
-    <form method="post" action="/travel/plan/{{ event.id }}" class="grid-three">
-      <label>Travel owner email <input type="email" name="owner_email" value="travelops@cornellwrestling.org" /></label>
-      <label>Spend limit ($) <input type="number" step="0.01" name="spend_limit_dollars" value="3500" /></label>
-      <label>Transport mode <input type="text" name="transport_mode" value="charter bus" /></label>
-      <label>Depart at <input type="text" name="depart_at" placeholder="2026-11-12 08:00 ET" /></label>
-      <label>Return at <input type="text" name="return_at" placeholder="2026-11-14 20:00 ET" /></label>
-      <label>Notes <input type="text" name="notes" placeholder="Rooming list loaded from roster" /></label>
-      <button type="submit">Create Travel Plan + Ramp Card</button>
-    </form>
+    <div class="card-body">
+      {% if starters %}
+      <div class="travel-party">
+        <h4>Travel Party ({{ starters | length }} starters)</h4>
+        <div class="travel-party-list">
+          {% for s in starters %}
+          <span class="travel-person">{{ s.name }}</span>
+          {% endfor %}
+        </div>
+      </div>
+      {% else %}
+      <p class="muted">No starters selected. Star athletes in the roster above to populate the travel party.</p>
+      {% endif %}
+      <form method="post" action="/travel/plan/{{ event.id }}" class="grid-three">
+        <label>Travel owner email <input type="email" name="owner_email" value="travelops@cornellwrestling.org" /></label>
+        <label>Spend limit ($) <input type="number" step="0.01" name="spend_limit_dollars" value="3500" /></label>
+        <label>Transport mode <input type="text" name="transport_mode" value="charter bus" /></label>
+        <label>Depart at <input type="text" name="depart_at" placeholder="2026-11-12 08:00 ET" /></label>
+        <label>Return at <input type="text" name="return_at" placeholder="2026-11-14 20:00 ET" /></label>
+        <label>Notes <input type="text" name="notes" placeholder="Additional notes" /></label>
+        <button type="submit">Create Travel Plan + Ramp Card</button>
+      </form>
+    </div>
   </details>
   {% else %}
-  <p>No away events imported yet.</p>
+  <p class="muted">No away events{% if selected_sport %} for {{ selected_sport }}{% endif %}.</p>
   {% endfor %}
 </section>
 
+<!-- Travel Plans & Cards -->
+{% if travel_plans %}
 <section class="panel">
-  <h2>4) Travel plans and cards</h2>
+  <h2>Travel Plans & Cards</h2>
   <table>
     <thead>
       <tr>
@@ -102,20 +135,18 @@
         <td>
           {% if plan.ramp_wallet_link %}
           <a href="{{ plan.ramp_wallet_link }}" target="_blank">Card Link</a>
-          {% else %}
-          -
-          {% endif %}
+          {% else %}-{% endif %}
         </td>
       </tr>
-      {% else %}
-      <tr><td colspan="5">No travel plans yet.</td></tr>
       {% endfor %}
     </tbody>
   </table>
 </section>
+{% endif %}
 
+<!-- Recruiting -->
 <section class="panel">
-  <h2>5) Recruiting setup</h2>
+  <h2>Recruiting</h2>
   <form method="post" action="/recruits" class="grid-three">
     <label>Name <input type="text" name="name" required /></label>
     <label>Grad year <input type="text" name="grad_year" placeholder="2027" /></label>
@@ -126,10 +157,14 @@
     <button type="submit">Create Recruit</button>
   </form>
 
-  <h3>Assign recruits to current athletes + issue card</h3>
+  {% if recruits %}
+  <h3>Assign recruits to athletes</h3>
   {% for recruit in recruits %}
   <details class="card">
-    <summary><strong>{{ recruit.name }}</strong> | {{ recruit.weight_class or 'Unspecified weight' }} | status: {{ recruit.status }}</summary>
+    <summary>
+      <strong>{{ recruit.name }}</strong>
+      <span class="muted">{{ recruit.weight_class or 'Unspecified weight' }} &middot; {{ recruit.status }}</span>
+    </summary>
     <form method="post" action="/recruits/{{ recruit.id }}/assign" class="grid-three">
       <label>
         Athlete host
@@ -146,13 +181,14 @@
       <button type="submit">Assign + Send Wallet Card Link</button>
     </form>
   </details>
-  {% else %}
-  <p>No recruits yet.</p>
   {% endfor %}
+  {% endif %}
 </section>
 
+<!-- Recruit Assignments -->
+{% if assignments %}
 <section class="panel">
-  <h2>6) Recruit card assignments</h2>
+  <h2>Recruit Card Assignments</h2>
   <table>
     <thead>
       <tr>
@@ -177,10 +213,137 @@
           {% endif %}
         </td>
       </tr>
-      {% else %}
-      <tr><td colspan="5">No assignments yet.</td></tr>
       {% endfor %}
     </tbody>
   </table>
 </section>
+{% endif %}
+
+<!-- Loading overlay -->
+<div id="loading-overlay" class="loading-overlay" style="display:none;">
+  <div class="loading-box">
+    <div class="spinner"></div>
+    <div id="loading-steps" class="loading-steps"></div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  // --- Star toggle ---
+  document.querySelectorAll('.star-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      var id = btn.dataset.athleteId;
+      fetch('/athletes/' + id + '/starter', { method: 'PATCH' })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+          if (!d.ok) return;
+          btn.classList.toggle('active', d.is_starter);
+          btn.textContent = d.is_starter ? '\u2605' : '\u2606';
+          btn.closest('tr').classList.toggle('starter-row', d.is_starter);
+          // Update starter count
+          var count = document.querySelectorAll('.star-btn.active').length;
+          var label = document.querySelector('.panel-header .muted');
+          if (label) label.textContent = count + ' starter' + (count !== 1 ? 's' : '') + ' selected';
+        });
+    });
+  });
+
+  // --- Inline email editing ---
+  document.querySelectorAll('.inline-email').forEach(function(input) {
+    var saved = input.value;
+    input.addEventListener('blur', function() {
+      if (input.value === saved) return;
+      var fd = new FormData();
+      fd.append('email', input.value);
+      fetch('/athletes/' + input.dataset.athleteId + '/email', {
+        method: 'PATCH', body: fd
+      }).then(function(r) {
+        if (r.ok) {
+          saved = input.value;
+          input.style.outline = '2px solid #2ecc40';
+          setTimeout(function() { input.style.outline = ''; }, 800);
+        } else {
+          input.style.outline = '2px solid #e74c3c';
+        }
+      });
+    });
+    input.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    });
+  });
+
+  // --- Loading overlay for forms ---
+  var overlay = document.getElementById('loading-overlay');
+  var stepsEl = document.getElementById('loading-steps');
+
+  var stepMap = {
+    '/travel/plan': [
+      'Looking up venue...',
+      'Searching for hotels...',
+      'Provisioning Ramp card...',
+      'Creating travel plan...'
+    ],
+    '/recruits': [
+      'Creating recruit record...',
+      'Saving to database...'
+    ],
+    '/assign': [
+      'Provisioning Ramp card...',
+      'Issuing wallet link...',
+      'Assigning recruit...'
+    ]
+  };
+
+  function getSteps(action) {
+    for (var key in stepMap) {
+      if (action.indexOf(key) !== -1) return stepMap[key];
+    }
+    return ['Processing...'];
+  }
+
+  function showLoading(steps) {
+    stepsEl.innerHTML = '';
+    steps.forEach(function(text) {
+      var div = document.createElement('div');
+      div.className = 'step pending';
+      div.textContent = text;
+      stepsEl.appendChild(div);
+    });
+    overlay.style.display = 'flex';
+    animateSteps(0, steps.length);
+  }
+
+  function animateSteps(idx, total) {
+    if (idx >= total) return;
+    var children = stepsEl.children;
+    children[idx].className = 'step active';
+    if (idx > 0) children[idx - 1].className = 'step done';
+    var delay = 1200 + Math.random() * 1800;
+    setTimeout(function() { animateSteps(idx + 1, total); }, delay);
+  }
+
+  document.querySelectorAll('form').forEach(function(form) {
+    form.addEventListener('submit', function(e) {
+      var action = form.getAttribute('action') || '';
+      var steps = getSteps(action);
+      if (steps[0] === 'Processing...' && action.indexOf('/recruits') === -1) return;
+      e.preventDefault();
+      showLoading(steps);
+      var fd = new FormData(form);
+      fetch(action, {
+        method: 'POST',
+        body: fd,
+        redirect: 'follow'
+      }).then(function(r) {
+        window.location.href = r.url;
+      }).catch(function() {
+        window.location.reload();
+      });
+    });
+  });
+})();
+</script>
 {% endblock %}

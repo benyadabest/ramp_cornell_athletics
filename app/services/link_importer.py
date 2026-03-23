@@ -124,7 +124,7 @@ def _extract_with_openai(kind: str, url: str, raw_text: str, rows: list[dict[str
 
     client = OpenAI(api_key=settings.openai_api_key)
     system = (
-        "You extract Cornell wrestling operations data from messy webpages. "
+        "You extract Cornell athletics data from messy webpages. "
         "Return compact valid JSON only."
     )
     if kind == "roster":

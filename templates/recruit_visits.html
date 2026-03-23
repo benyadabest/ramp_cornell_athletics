@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+{% block title_suffix %} - Recruit Visits{% endblock %}
+
+{% block header_right %}
+<div class="sport-dropdown-wrap">
+  <select class="sport-dropdown" onchange="window.location='/recruiting/visits?sport='+encodeURIComponent(this.value)">
+    <option value="" {{ 'selected' if not selected_sport else '' }}>All Sports</option>
+    {% for s in sports %}
+    <option value="{{ s }}" {{ 'selected' if selected_sport == s else '' }}>{{ s }}</option>
+    {% endfor %}
+  </select>
+</div>
+{% endblock %}
+
+{% block content %}
+<!-- Plan a Visit -->
+<section class="panel">
+  <div class="panel-header">
+    <h2>Plan a Recruit Visit</h2>
+  </div>
+  <p class="muted" style="margin-top:0">Select a recruit and we'll auto-match Cornell athletes from their home state to host them.</p>
+
+  <div class="grid-three" style="margin-bottom:0.75rem">
+    <label>
+      Recruit
+      <select id="visit-recruit" class="event-select" onchange="previewHosts()">
+        <option value="">Choose a recruit...</option>
+        {% for r in recruits %}
+        <option value="{{ r.id }}" data-hometown="{{ r.home_town or '' }}">
+          {{ r.name }}{% if r.home_town %} ({{ r.home_town }}){% endif %}
+        </option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>
+      Visit Date
+      <input type="date" id="visit-date" />
+    </label>
+    <label>
+      Spend Limit per Host ($)
+      <input type="number" id="visit-limit" value="300" step="1" min="0" />
+    </label>
+  </div>
+
+  <!-- Host Preview -->
+  <div id="host-preview" style="display:none">
+    <div class="travel-party" id="host-party-box">
+      <h4>Auto-Matched Hosts <span class="muted" id="host-state-label"></span></h4>
+      <p class="muted" id="host-no-match" style="display:none;margin:0">No athletes found from this state. You can still create the visit.</p>
+      <div class="travel-party-list" id="host-list"></div>
+    </div>
+    <div style="margin-top:0.75rem">
+      <label style="display:block;margin-bottom:0.5rem">
+        Notes
+        <input type="text" id="visit-notes" placeholder="Any special instructions..." style="width:100%" />
+      </label>
+      <button type="button" class="btn-primary" onclick="createVisit()">Create Visit + Issue Ramp Cards</button>
+    </div>
+  </div>
+</section>
+
+<!-- Existing Visits -->
+{% if visits %}
+<section class="panel">
+  <div class="panel-header">
+    <h2>Planned Visits</h2>
+  </div>
+  {% for item in visits %}
+  {% set visit = item.visit %}
+  {% set cards = item.cards %}
+  <details class="card">
+    <summary>
+      <strong>{{ visit.recruit_name }}</strong>
+      {% if visit.visit_date %} — {{ visit.visit_date }}{% endif %}
+      <span class="muted">· {{ cards | length }} host card{{ 's' if cards | length != 1 else '' }}</span>
+    </summary>
+    <div class="card-body">
+      <div class="summary-row"><span class="summary-label">Recruit</span><span class="summary-value">{{ visit.recruit_name }} ({{ visit.recruit_hometown or 'Unknown' }})</span></div>
+      <div class="summary-row"><span class="summary-label">Visit Date</span><span class="summary-value">{{ visit.visit_date or 'TBD' }}</span></div>
+      <div class="summary-row"><span class="summary-label">Limit / Host</span><span class="summary-value">${{ (visit.spend_limit_cents / 100) | int }}</span></div>
+      {% if visit.notes %}<div class="summary-row"><span class="summary-label">Notes</span><span class="summary-value">{{ visit.notes }}</span></div>{% endif %}
+      {% if cards %}
+      <table style="margin-top:0.75rem">
+        <thead><tr><th>Host Athlete</th><th>Hometown</th><th>Card ID</th><th>Last 4</th><th>Limit</th><th>Wallet</th></tr></thead>
+        <tbody>
+          {% for c in cards %}
+          <tr>
+            <td>{{ c.athlete_name }}</td>
+            <td class="muted">{{ c.athlete_hometown or '-' }}</td>
+            <td class="muted">{{ c.ramp_card_id }}</td>
+            <td>****{{ c.ramp_card_last4 }}</td>
+            <td>${{ (c.spend_limit_cents / 100) | int }}</td>
+            <td>
+              <a href="{{ c.wallet_link }}" target="_blank">Card Link</a>
+              {% if c.apple_wallet_link %}| <a href="{{ c.apple_wallet_link }}" target="_blank">Apple</a>{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+    </div>
+  </details>
+  {% endfor %}
+</section>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+  var sport = '{{ selected_sport }}';
+  var matchedAthletes = [];
+
+  window.previewHosts = function() {
+    var sel = document.getElementById('visit-recruit');
+    var recruitId = sel.value;
+    var preview = document.getElementById('host-preview');
+    if (!recruitId) { preview.style.display = 'none'; return; }
+
+    preview.style.display = '';
+    var hostList = document.getElementById('host-list');
+    hostList.innerHTML = '<span class="muted">Searching...</span>';
+    document.getElementById('host-no-match').style.display = 'none';
+
+    var url = '/api/recruiting/visits/preview?recruit_id=' + recruitId;
+    if (sport) url += '&sport=' + encodeURIComponent(sport);
+
+    fetch(url)
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      hostList.innerHTML = '';
+      matchedAthletes = d.athletes || [];
+
+      var label = document.getElementById('host-state-label');
+      if (d.state) {
+        label.textContent = '(from ' + d.state + ')';
+      } else {
+        label.textContent = '';
+      }
+
+      if (matchedAthletes.length === 0) {
+        document.getElementById('host-no-match').style.display = '';
+        return;
+      }
+
+      matchedAthletes.forEach(function(a) {
+        var pill = document.createElement('span');
+        pill.className = 'travel-person';
+        pill.dataset.id = a.id;
+        pill.innerHTML = a.name + ' <span class="muted" style="margin-left:0.3rem;font-size:0.8rem">' + (a.hometown || '') + '</span>' +
+          ' <button type="button" class="remove-person" onclick="removeHost(this)" title="Remove">&times;</button>';
+        hostList.appendChild(pill);
+      });
+    })
+    .catch(function() {
+      hostList.innerHTML = '<span class="muted">Failed to load matches.</span>';
+    });
+  };
+
+  window.removeHost = function(btn) {
+    btn.closest('.travel-person').remove();
+  };
+
+  window.createVisit = function() {
+    var recruitId = document.getElementById('visit-recruit').value;
+    if (!recruitId) return;
+
+    var ids = [];
+    document.querySelectorAll('#host-list .travel-person').forEach(function(p) {
+      if (p.dataset.id) ids.push(p.dataset.id);
+    });
+
+    var form = document.createElement('form');
+    form.method = 'POST';
+    form.action = '/recruiting/visits' + (sport ? '?sport=' + encodeURIComponent(sport) : '');
+
+    var fields = {
+      recruit_id: recruitId,
+      visit_date: document.getElementById('visit-date').value,
+      spend_limit_dollars: document.getElementById('visit-limit').value,
+      athlete_ids: ids.join(','),
+      notes: document.getElementById('visit-notes').value
+    };
+
+    for (var key in fields) {
+      var input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = key;
+      input.value = fields[key];
+      form.appendChild(input);
+    }
+
+    document.body.appendChild(form);
+    form.submit();
+  };
+})();
+</script>
+{% endblock %}
